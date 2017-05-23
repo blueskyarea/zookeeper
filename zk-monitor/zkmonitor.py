@@ -66,7 +66,6 @@ else:
 
 class Session(object):
     def __init__(self, session, server_id):
-        # allow both ipv4 and ipv6 addresses
         m = re.search('/([\da-fA-F:\.]+):(\d+)\[(\d+)\]\((.*)\)', session)
         self.host = m.group(1)
         self.port = m.group(2)
@@ -93,8 +92,9 @@ class ZKServer(object):
 
             sio = StringIO(stat)
             line = sio.readline()
-            m = re.search('.*: (\d+\.\d+\.\d+)-.*', line) # e.g. nodecount:0 zxid:0x0 sessions:0o att
-            self.version = m.group(1) # raise Exception when stat response empty
+            # e.g. INFO:root:Zookeeper version: 3.4.6-1569965
+            m = re.search('.*: (\d+\.\d+\.\d+)-.*', line)
+            self.version = m.group(1)
             sio.readline()
             self.sessions = []
             for line in sio:
@@ -102,6 +102,7 @@ class ZKServer(object):
                     break
                 self.sessions.append(Session(line.strip(), server_id))
             for line in sio:
+                LOG.info(line)
                 attr, value = line.split(':')
                 attr = attr.strip().replace(" ", "_").replace("/", "_").lower()
                 setattr(self, attr, value.strip())
@@ -127,8 +128,8 @@ def send_cmd(host, port, cmd):
         s.sendall(cmd)
 
         # shutting down the socket write side helps ensure that we don't end up with TIME_WAIT sockets
-        if not options.fix_330:
-            s.shutdown(socket.SHUT_WR)
+        #if not options.fix_330:
+        #    s.shutdown(socket.SHUT_WR)
 
         BUF_SIZE=4096
         while True:
@@ -246,7 +247,9 @@ class SessionUI(BaseUI):
 
     def update(self, s):
         self.win.erase()
-        self.addstr(1, 0, "CLIENT           PORT S I   QUEUED    RECVD     SENT", curses.A_REVERSE)
+        self.addstr(1, 0, "[Sessions]", curses.A_BOLD)
+        #self.addstr(2, 0, "CLIENT           PORT S   QUEUED    RECVD     SENT", curses.A_REVERSE)
+        self.addstr(2, 0, "CLIENT           PORT SERVER_ID O   QUEUED    RECVED     SENT", curses.color_pair(1))
         self.sessions[s.server_id] = s.sessions
         items = []
         for l in self.sessions:
@@ -256,7 +259,7 @@ class SessionUI(BaseUI):
             try:
                 #ugh, need to handle if slow - thread for async resolver?
                 host = self.hostname(session) if options.names else session.host
-                self.addstr(i + 2, 0, "%-15s %5s %1s %1s %8s %8s %8s" %
+                self.addstr(i + 3, 0, "%-15s %5s %9s %1s %8s %9s %8s" %
                             (host[:15], session.port, session.server_id, session.interest_ops,
                              session.queued, session.recved, session.sent))
             except:
@@ -274,8 +277,9 @@ class Main(object):
         self.cmd_window.box()
 
         curses.use_default_colors()
-        #curses.start_color()
-        #curses.init_pair(1,curses.COLOR_RED,curses.COLOR_BLACK)
+        curses.initscr()
+        curses.start_color()
+        curses.init_pair(1, curses.COLOR_WHITE, curses.COLOR_GREEN)
         # w/o this for some reason takes 1 cycle to draw wins
         objwin.refresh()
 
